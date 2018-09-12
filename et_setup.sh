@@ -1,77 +1,99 @@
 #!/bin/bash
-
-HOMEDIR=/home/$USER
+set -exo pipefail
 
 # Updates
-sudo apt-get -y update
+apt-get -y update
 
-sudo apt-get -y install python3-pip
-sudo apt-get -y install tmux
-sudo apt-get -y install gdb gdb-multiarch
-sudo apt-get -y install unzip
-sudo apt-get -y install foremost
-sudo apt-get -y install ipython
-sudo apt-get -y install python2.7 python-pip python-dev git libssl-dev libffi-dev
-sudo apt-get -y install vim curl
+# It doesn't make sense to run sudo in Docker's container,
+# but some scripts are using it.
+apt-get -y install sudo
 
-# Ptrace enable
-echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
-
-# Install virtualenvwrapper
-pip install virtualenvwrapper
-export WORKON_HOME=$HOMEDIR/.virtualenvs
-export PROJECT_HOME=$HOMEDIR/Devel
-source /usr/local/bin/virtualenvwrapper.sh
+# Basic utilities
+apt-get -y install vim curl wget unzip tmux exuberant-ctags zsh
+apt-get -y install python3-pip
+apt-get -y install gdb gdb-multiarch
+apt-get -y install foremost
+apt-get -y install python2.7 python-pip python-dev git libssl-dev libffi-dev
+apt-get -y install ipython
 
 # Switch to tools dir for installation
-cd $HOMEDIR
-mkdir tools
+cd $HOME
+mkdir -p tools
 cd tools
 
-# Install pwndbg
-mkvirtualenv pwn
+# Install Python tools
+pip install --upgrade virtualenv
+virtualenv --no-site-package pwn
+source pwn/bin/activate
 pip install --upgrade pwntools
+pip install --upgrade angr
+pip install --upgrade r2pipe
+deactivate 
+
+# Installing Py2neo for Joerns support
+cd $HOME/tools
+virtualenv --no-site-package joern
+source pwn/bin/activate
+wget https://github.com/nigelsmall/py2neo/archive/py2neo-2.0.7.tar.gz
+tar zxvf py2neo*
+cd py2neo-py2neo-2.0.7
+python setup.py install
 deactivate
 
+# Install joern
+apt-get install -y ant openjdk-8-jdk-headless
+wget https://github.com/fabsx00/joern/archive/0.3.1.tar.gz
+tar xfzv 0.3.1.tar.gz
+cd joern-0.3.1
+wget http://mlsec.org/joern/lib/lib.tar.gz
+tar xfzv lib.tar.gz
+ant
+alias joern='java -jar $JOERN/bin/joern.jar'
+
 # Install pwndbg
+cd $HOME
 git clone https://github.com/pwndbg/pwndbg
 cd pwndbg
 ./setup.sh
 
 # Install radare2
-cd ~
+cd $HOME
 git clone https://github.com/radare/radare2
 cd radare2
 ./sys/install.sh
 
 # Install binwalk
-cd ~
+cd $HOME
 git clone https://github.com/devttys0/binwalk
 cd binwalk
-sudo python setup.py install
-sudo apt-get install squashfs-tools
+python setup.py install
+apt-get install -y squashfs-tools
 
 # Install Firmware-Mod-Kit
-sudo apt-get -y install git build-essential zlib1g-dev liblzma-dev python-magic
+apt-get -y install git build-essential zlib1g-dev liblzma-dev python-magic
 cd ~/tools
-wget https://firmware-mod-kit.googlecode.com/files/fmk_099.tar.gz
-tar xvf fmk_099.tar.gz
-rm fmk_099.tar.gz
-cd fmk_099/src
+git clone https://github.com/rampageX/firmware-mod-kit.git
+cd firmware-mod-kit/src
 ./configure
 make
 
+# Install 32 bit libs
+dpkg --add-architecture i386
+apt-get update
+apt-get -y install libc6:i386 libncurses5:i386 libstdc++6:i386
+apt-get -y install libc6-dev-i386
+
+
 # Install american-fuzzy-lop
-sudo apt-get -y install clang llvm
-cd $HOMEDIR/tools
+# Latest version of AFL (2.52b) only works with clang 4.0
+apt-get -y install clang llvm
+cd $HOME/tools
 wget --quiet http://lcamtuf.coredump.cx/afl/releases/afl-latest.tgz
 tar -xzvf afl-latest.tgz
 rm afl-latest.tgz
-wget --quiet http://llvm.org/releases/3.8.0/clang+llvm-3.8.0-x86_64-linux-gnu-ubuntu-14.04.tar.xz
-xz -d clang*
+wget --quiet http://releases.llvm.org/4.0.0/clang%2bllvm-4.0.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz
 tar xvf clang*
-cd clang*
-cd bin
+cd clang*/bin
 export PATH=$PWD:$PATH
 cd ../..
 (
@@ -82,69 +104,63 @@ cd ../..
     cd llvm_mode
     make
   )
-  sudo make install
+  make install
 
   # build qemu-support
-  sudo apt-get -y install libtool automake bison libglib2.0-dev
+  apt-get -y install libtool automake bison libglib2.0-dev libtool-bin
+  cd qemu_mode
   ./build_qemu_support.sh
 )
 
-# Install 32 bit libs
-sudo dpkg --add-architecture i386
-sudo apt-get update
-sudo apt-get -y install libc6:i386 libncurses5:i386 libstdc++6:i386
-sudo apt-get -y install libc6-dev-i386
+# Get clang 6.0 too since it's newer
+wget http://releases.llvm.org/6.0.1/clang%2bllvm-6.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+tar xvf "clang+llvm-6.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz"
+export PATH=$HOME/tools/clang+llvm-6.0.1-x86_64-linux-gnu-ubuntu-16.04/bin:$PATH
 
-# Install r2pipe
-pip install r2pipe
+# Install honggfuzz
+apt-get -y install binutils-dev libunwind-dev
+cd $HOME/tools
+git clone https://github.com/google/honggfuzz.git
+cd honggfuzz
+make
 
 # Install ROPGadget
 git clone https://github.com/JonathanSalwan/ROPgadget
 cd ROPgadget
-sudo python setup.py install
+python setup.py install
 
 # Install GO
-cd $HOMEDIR
-wget https://storage.googleapis.com/golang/go1.6.2.linux-amd64.tar.gz
+cd $HOME
+wget https://dl.google.com/go/go1.11.linux-amd64.tar.gz
 tar zxvf go1.*
-mkdir $HOMEDIR/.go
+mkdir $HOME/.go
+export PATH=$HOME/go/bin:$PATH
+export GOPATH=$HOME/.go
 
 # Install crashwalk
-go get -u github.com/arizvisa/crashwalk/cmd/...
-mkdir $HOMEDIR/src
-cd $HOMEDIR/src
+go get -u github.com/arizvisa/crashwalk
+mkdir $HOME/src
+cd $HOME/src
 git clone https://github.com/jfoote/exploitable
 
 # Install Delve - go debugging
 go get github.com/derekparker/delve/cmd/dlv
 
-# Install joern
-sudo apt-get install ant
-wget https://github.com/fabsx00/joern/archive/0.3.1.tar.gz
-tar xfzv 0.3.1.tar.gz
-cd joern-0.3.1
-wget http://mlsec.org/joern/lib/lib.tar.gz
-tar xfzv lib.tar.gz
-ant
-alias joern='java -jar $JOERN/bin/joern.jar'
-
-mkvirtualenv joern
-wget https://github.com/nigelsmall/py2neo/archive/py2neo-2.0.7.tar.gz
-tar zxvf py2neo*
-cd py2neo-py2neo-2.0.7
-sudo python setup.py install
-
 # Install Rust
+cd $HOME
 curl -f -L https://static.rust-lang.org/rustup.sh -O
-sudo sh rustup.sh
+sh rustup.sh
 cargo install ripgrep
 
 # Personal config
-sudo sudo apt-get -y install stow
-cd $HOMEDIR
-rm .bashrc
-git clone --recursive https://github.com/ctfhacker/dotfiles
+cd $HOME
+git clone --recursive https://github.com/huyphan/dotfiles
 cd dotfiles
-./install.sh
+cp .tmux.conf $HOME
+cp .vimrc $HOME
+cp .zshrc $HOME
 
+git clone https://github.com/VundleVim/Vundle.vim.git ~/.vim/bundle/Vundle.vim
+vim +PluginInstall +qall
 
+chsh -s $(which zsh)
