@@ -93,6 +93,8 @@ pip3 install --upgrade angr
 pip3 install --upgrade r2pipe
 pip3 install --upgrade keystone-engine
 pip3 install --upgrade qiling
+pip3 install --upgrade ipython
+pip3 install --upgrade monkeyhex
 
 # Install pwndbg
 cd $HOME
