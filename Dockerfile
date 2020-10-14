@@ -3,7 +3,7 @@
 # Based on Ubuntu
 ############################################################
 
-FROM ubuntu:16.04
+FROM ubuntu:20.04
 MAINTAINER Maintainer Cory Duplantis
 
 COPY et_setup.sh /tmp/
